@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aurora backup storage calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EDF0F3;
+    --card:#FFFFFF;
+    --ink:#121D2B;
+    --ink-soft:#5A6B7D;
+    --rule:#C6CFD9;
+    --baseline:#48607A;
+    --records:#B5305F;
+    --free:#12706A;
+    --free-wash:rgba(18,112,106,.34);
+    --billed:#B5305F;
+    --snapshot:#3F4E8F;
+    --focus:#12706A;
+    --display:"Bricolage Grotesque","Helvetica Neue",Arial,sans-serif;
+    --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(var(--rule) 1px,transparent 1px),linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+    background-size:64px 64px;
+    background-position:-1px -1px;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(circle at 50% 0%,rgba(237,240,243,0) 0%,var(--paper) 72%);
+  }
+  .wrap{position:relative;max-width:1180px;margin:0 auto;padding:40px 24px 80px}
+  header{margin-bottom:28px;border-bottom:2px solid var(--ink);padding-bottom:18px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,5vw,50px);line-height:1.02;margin:8px 0 12px;letter-spacing:-.02em}
+  .formula{font-family:var(--mono);font-size:13px;color:var(--ink-soft);max-width:62ch}
+  .formula b{color:var(--ink);font-weight:600}
+
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:26px;align-items:start}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:20px}
+  .card + .card{margin-top:20px}
+  .card h2{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin:0 0 16px;color:var(--ink-soft)}
+
+  label{display:block;font-size:12px;font-weight:500;color:var(--ink-soft);margin-bottom:5px}
+  .hint{font-size:11.5px;color:var(--ink-soft);margin-top:5px;line-height:1.35}
+  input[type=number],input[type=text]{
+    width:100%;font-family:var(--mono);font-size:16px;color:var(--ink);
+    background:var(--paper);border:1px solid var(--rule);border-radius:2px;padding:9px 10px;
+  }
+  input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:420px){.fields{grid-template-columns:1fr}}
+
+  .presets{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:18px}
+  .chip{
+    font-family:var(--mono);font-size:11.5px;padding:6px 10px;background:transparent;
+    border:1px solid var(--rule);border-radius:99px;color:var(--ink-soft);cursor:pointer;
+  }
+  .chip:hover{border-color:var(--ink);color:var(--ink)}
+
+  .fill{display:flex;gap:8px;align-items:flex-end;margin-bottom:14px}
+  .fill > div{flex:1}
+  button.act{
+    font-family:var(--body);font-size:13px;font-weight:500;padding:9px 14px;white-space:nowrap;
+    background:var(--ink);color:#fff;border:1px solid var(--ink);border-radius:2px;cursor:pointer;
+  }
+  button.act.ghost{background:transparent;color:var(--ink)}
+  button.act:hover{opacity:.86}
+
+  .days{max-height:330px;overflow-y:auto;border-top:1px solid var(--rule)}
+  .day{display:grid;grid-template-columns:52px 1fr 92px;gap:10px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--rule)}
+  .day span.n{font-family:var(--mono);font-size:12px;color:var(--ink-soft)}
+  .day input{padding:6px 8px;font-size:14px}
+  .day span.cum{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);text-align:right}
+
+  /* ---- signature: the retention window bar ---- */
+  .stage{background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:20px;position:sticky;top:24px}
+  @media (max-width:900px){.stage{position:static}}
+  .bartop{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:12px}
+  .bartop .lab{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
+  .bartop .day-read{font-family:var(--mono);font-size:12px;color:var(--ink)}
+
+  .bar{position:relative;height:74px;background:var(--paper);border:1px solid var(--rule);overflow:hidden}
+  .segs{display:flex;height:100%;width:100%}
+  .seg{height:100%;transition:width .28s cubic-bezier(.4,0,.2,1);border-right:1px solid rgba(255,255,255,.28)}
+  .seg.base{background:var(--baseline)}
+  .freewash{position:absolute;top:0;left:0;height:100%;background:var(--free-wash);transition:width .28s cubic-bezier(.4,0,.2,1);pointer-events:none}
+  .waterline{position:absolute;top:-1px;bottom:-1px;width:0;border-left:2px dashed var(--ink);transition:left .28s cubic-bezier(.4,0,.2,1);pointer-events:none}
+  .flag{position:absolute;top:0;transform:translateX(4px);font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:#fff;padding:2px 5px;white-space:nowrap;transition:left .28s cubic-bezier(.4,0,.2,1)}
+
+  .axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:7px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:11.5px;color:var(--ink-soft)}
+  .legend i{display:inline-block;width:11px;height:11px;margin-right:6px;vertical-align:-1px}
+
+  .scrub{margin-top:18px;display:flex;align-items:center;gap:12px}
+  input[type=range]{flex:1;accent-color:var(--free)}
+  .play{font-family:var(--mono);font-size:12px;padding:7px 12px;border:1px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer;border-radius:2px}
+
+  .readouts{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:22px}
+  .ro{background:var(--card);padding:14px}
+  .ro .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:6px}
+  .ro .v{font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-.01em}
+  .ro .sub{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:3px}
+  .ro.billed .v{color:var(--billed)}
+  .ro.free .v{color:var(--free)}
+  .ro.cost{grid-column:1/-1;background:var(--ink)}
+  .ro.cost .k{color:#96A6B8}
+  .ro.cost .v{color:#fff;font-size:32px}
+  .ro.cost .sub{color:#96A6B8}
+
+  .note{margin-top:16px;font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--ink-soft);border-left:2px solid var(--rule);padding-left:12px}
+  .note b{color:var(--ink);font-weight:600}
+  footer{margin-top:36px;font-size:12px;color:var(--ink-soft);max-width:70ch;line-height:1.6}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Amazon Aurora · automated backup storage</div>
+  <h1>What crosses the waterline<br>is what you pay for.</h1>
+  <p class="formula">
+    <b>Backup usage</b> = volume size at the start of the window + every change record in it.
+    <b>Free allowance</b> = the volume size right now. Growth lifts the allowance with it; churn does not.
+  </p>
+</header>
+
+<div class="grid">
+
+  <!-- ================= INPUTS ================= -->
+  <div>
+    <div class="card">
+      <h2>Cluster</h2>
+      <div class="presets" id="presets"></div>
+      <div class="fields">
+        <div>
+          <label for="start">Volume size at start of window (GB)</label>
+          <input type="number" id="start" min="0" step="1" value="1000">
+        </div>
+        <div>
+          <label for="days">PITR retention (days)</label>
+          <input type="number" id="days" min="1" max="35" step="1" value="14">
+        </div>
+        <div>
+          <label for="current">Volume size today (GB)</label>
+          <input type="number" id="current" min="0" step="1" value="400">
+          <div class="hint">This is your free allowance. Set it to the start size for a flat database.</div>
+        </div>
+        <div>
+          <label for="rate">Price per GB-month (USD)</label>
+          <input type="number" id="rate" min="0" step="0.001" value="0.021">
+          <div class="hint">Aurora Standard, us-east-1. Check your region.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Change records per day</h2>
+      <div class="fill">
+        <div>
+          <label for="fillval">Set every day to (GB)</label>
+          <input type="number" id="fillval" min="0" step="1" value="0">
+        </div>
+        <button class="act" id="fillbtn">Apply to all days</button>
+      </div>
+      <div class="days" id="days-list"></div>
+      <div class="hint" style="margin-top:10px">
+        Enter the storage each day's writes, updates and deletes add to the backup — not the net change in database size.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Manual snapshots</h2>
+      <div class="fields">
+        <div>
+          <label for="snapcount">Snapshots kept past the retention window</label>
+          <input type="number" id="snapcount" min="0" step="1" value="0">
+          <div class="hint">Snapshots inside the window are free — the data is already in the continuous backup.</div>
+        </div>
+        <div>
+          <label for="snapsize">Size of each snapshot (GB)</label>
+          <input type="number" id="snapsize" min="0" step="1" value="1000">
+          <div class="hint">Full cluster volume size when it was taken. Churn doesn't change this.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Cross-region copies</h2>
+      <div class="fields">
+        <div>
+          <label for="copies">Copies retained in the second region</label>
+          <input type="number" id="copies" min="0" step="1" value="0">
+          <div class="hint">Each one is a full copy. No free allowance applies there.</div>
+        </div>
+        <div>
+          <label for="destrate">Destination price per GB-month (USD)</label>
+          <input type="number" id="destrate" min="0" step="0.001" value="0.021">
+        </div>
+        <div>
+          <label for="xferrate">Transfer price per GB (USD)</label>
+          <input type="number" id="xferrate" min="0" step="0.001" value="0.02">
+          <div class="hint">Charged out of the source region.</div>
+        </div>
+        <div>
+          <label for="copyfreq">New copies made per month</label>
+          <input type="number" id="copyfreq" min="0" step="1" value="4">
+          <div class="hint">Transfer is incremental after the first copy.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= STAGE ================= -->
+  <div class="stage">
+    <div class="bartop">
+      <span class="lab">Retention window</span>
+      <span class="day-read" id="dayread">Day 14 of 14</span>
+    </div>
+
+    <div class="bar" id="bar">
+      <div class="segs" id="segs"></div>
+      <div class="freewash" id="freewash"></div>
+      <div class="waterline" id="waterline"></div>
+      <div class="flag" id="flag">Free allowance</div>
+    </div>
+    <div class="axis"><span>0 GB</span><span id="axismax">—</span></div>
+
+    <div class="legend">
+      <span><i style="background:var(--baseline)"></i>Volume at start of window</span>
+      <span><i style="background:var(--records)"></i>Change records</span>
+      <span><i style="background:var(--snapshot)"></i>Snapshots past retention</span>
+      <span><i style="background:var(--free-wash)"></i>Covered by free allowance</span>
+    </div>
+
+    <div class="scrub">
+      <button class="play" id="play">▶ Play window</button>
+      <input type="range" id="cursor" min="0" max="14" value="14" aria-label="Day in retention window">
+    </div>
+
+    <div class="readouts">
+      <div class="ro"><div class="k">Total backup usage</div><div class="v" id="ro-total">—</div><div class="sub" id="ro-total-sub"></div></div>
+      <div class="ro free"><div class="k">Free allowance</div><div class="v" id="ro-free">—</div><div class="sub" id="ro-free-sub"></div></div>
+      <div class="ro billed"><div class="k">Billed backup storage</div><div class="v" id="ro-billed">—</div><div class="sub" id="ro-billed-sub"></div></div>
+      <div class="ro"><div class="k">Change records in window</div><div class="v" id="ro-records">—</div><div class="sub" id="ro-records-sub"></div></div>
+      <div class="ro"><div class="k">Cross-region storage</div><div class="v" id="ro-xstore">—</div><div class="sub" id="ro-xstore-sub"></div></div>
+      <div class="ro"><div class="k">Transfer per month</div><div class="v" id="ro-xfer">—</div><div class="sub" id="ro-xfer-sub"></div></div>
+      <div class="ro cost"><div class="k">Total backup cost per month</div><div class="v" id="ro-cost">—</div><div class="sub" id="ro-cost-sub"></div></div>
+    </div>
+
+    <div class="note" id="note"></div>
+  </div>
+</div>
+
+<footer>
+  Aurora stores changed <em>pages</em>, so a workload described as “1 TB of changes” usually produces more than 1 TB of records once index maintenance and page splits are counted. Treat this as a planning model and compare it against the <span style="font-family:var(--mono)">TotalBackupStorageBilled</span> CloudWatch metric on your cluster for the real figure.
+</footer>
+</div>
+
+<script>
+(function(){
+  var el = function(id){ return document.getElementById(id); };
+  var startEl=el('start'), daysEl=el('days'), curEl=el('current'), rateEl=el('rate'),
+      listEl=el('days-list'), cursorEl=el('cursor'),
+      snapCountEl=el('snapcount'), snapSizeEl=el('snapsize'),
+      copiesEl=el('copies'), destRateEl=el('destrate'),
+      xferRateEl=el('xferrate'), copyFreqEl=el('copyfreq');
+  var churn = [];
+
+  var PRESETS = [
+    {n:'Churn, no growth',      s:1000, d:14, c:1000, per:null, cur:1000},
+    {n:'Pure growth',           s:1000, d:14, c:1500, per:null, cur:2500},
+    {n:'Growth + churn',        s:1000, d:14, c:10000,per:null, cur:10000},
+    {n:'Shrinking database',    s:1000, d:14, c:300,  per:null, cur:400},
+    {n:'AWS doc example',       s:100,  d:7,  c:null, per:[10,15,25,20,10,25,30], cur:200},
+    {n:'DR: weekly copy abroad',s:1000, d:14, c:300,  per:null, cur:1000, snapN:2, snapSz:1000, copies:4}
+  ];
+
+  function fmt(gb){
+    var n = Math.round(gb*10)/10;
+    return n.toLocaleString(undefined,{maximumFractionDigits:1}) + ' GB';
+  }
+  function tb(gb){
+    if (Math.abs(gb) < 1024) return '';
+    return (Math.round(gb/1024*100)/100).toLocaleString(undefined,{maximumFractionDigits:2}) + ' TB';
+  }
+  function usd(v){
+    return '$' + v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function num(input, fallback){
+    var v = parseFloat(input.value);
+    return isFinite(v) && v >= 0 ? v : fallback;
+  }
+
+  function buildDays(){
+    var d = Math.max(1, Math.min(35, Math.round(num(daysEl,14))));
+    while (churn.length < d) churn.push(0);
+    churn.length = d;
+    listEl.innerHTML = '';
+    var run = 0;
+    for (var i=0;i<d;i++){
+      run += churn[i];
+      var row = document.createElement('div');
+      row.className = 'day';
+      row.innerHTML = '<span class="n">Day ' + (i+1) + '</span>' +
+        '<input type="number" min="0" step="1" value="' + churn[i] + '" data-i="' + i + '" aria-label="Change records on day ' + (i+1) + ' in GB">' +
+        '<span class="cum">' + fmt(run) + '</span>';
+      listEl.appendChild(row);
+    }
+    listEl.querySelectorAll('input').forEach(function(inp){
+      inp.addEventListener('input', function(){
+        var v = parseFloat(this.value);
+        churn[+this.dataset.i] = isFinite(v) && v >= 0 ? v : 0;
+        updateCums(); render();
+      });
+    });
+    cursorEl.max = d;
+    if (+cursorEl.value > d) cursorEl.value = d;
+  }
+
+  function updateCums(){
+    var run = 0, cells = listEl.querySelectorAll('.cum');
+    for (var i=0;i<churn.length;i++){ run += churn[i]; if(cells[i]) cells[i].textContent = fmt(run); }
+  }
+
+  function render(){
+    var start = num(startEl,0),
+        cur   = num(curEl,0),
+        rate  = num(rateEl,0),
+        d     = churn.length,
+        upto  = Math.max(0, Math.min(d, +cursorEl.value));
+
+    var snapN  = Math.round(num(snapCountEl,0)),
+        snapSz = num(snapSizeEl,0),
+        copies = Math.round(num(copiesEl,0)),
+        destR  = num(destRateEl,0),
+        xferR  = num(xferRateEl,0),
+        freq   = Math.round(num(copyFreqEl,0));
+
+    var recordsAll = churn.reduce(function(a,b){return a+b;},0);
+    var recordsNow = churn.slice(0,upto).reduce(function(a,b){return a+b;},0);
+    var snapTotal  = snapN * snapSz;
+    var totalNow   = start + recordsNow + snapTotal;
+    var billedNow  = Math.max(0, totalNow - cur);
+    var scale      = Math.max(start + recordsAll + snapTotal, cur, 1);
+
+    // cross-region: full copies, no free allowance; transfer is incremental after the first
+    var xStoreGB   = copies * snapSz;
+    var monthChurn = d ? recordsAll / d * 30 : 0;
+    var xferGB     = freq > 0 ? monthChurn : 0;
+    var firstCopy  = copies > 0 ? snapSz * xferR : 0;
+
+    var costSource = billedNow * rate;
+    var costDest   = xStoreGB * destR;
+    var costXfer   = xferGB * xferR;
+    var costTotal  = costSource + costDest + costXfer;
+
+    // ---- bar ----
+    var html = '<div class="seg base" style="width:' + (start/scale*100) + '%"></div>';
+    for (var i=0;i<upto;i++){
+      if (!churn[i]) continue;
+      var light = 34 + (i % 4) * 6;
+      html += '<div class="seg" style="width:' + (churn[i]/scale*100) + '%;background:hsl(337 58% ' + light + '%)"></div>';
+    }
+    for (var s=0;s<snapN;s++){
+      html += '<div class="seg" style="width:' + (snapSz/scale*100) + '%;background:hsl(230 39% ' + (36 + (s % 3) * 7) + '%)"></div>';
+    }
+    el('segs').innerHTML = html;
+    var freePct = Math.min(100, cur/scale*100);
+    el('freewash').style.width = Math.min(freePct, totalNow/scale*100) + '%';
+    el('waterline').style.left = freePct + '%';
+    el('flag').style.left = freePct + '%';
+    el('flag').textContent = 'Free allowance · ' + fmt(cur);
+    el('axismax').textContent = fmt(scale);
+    el('dayread').textContent = upto === 0 ? 'Start of window' : 'Day ' + upto + ' of ' + d;
+
+    // ---- readouts ----
+    el('ro-total').textContent   = fmt(totalNow);
+    el('ro-total-sub').textContent = snapN ? ('includes ' + snapN + ' snapshot' + (snapN>1?'s':'') + ' · ' + fmt(snapTotal)) : (tb(totalNow) || 'Baseline + change records');
+    el('ro-free').textContent    = fmt(cur);
+    el('ro-free-sub').textContent = 'Volume size today';
+    el('ro-billed').textContent  = fmt(billedNow);
+    el('ro-billed-sub').textContent = billedNow === 0 ? 'Fully absorbed by the allowance' : usd(costSource) + ' per month';
+    el('ro-records').textContent = fmt(recordsNow);
+    el('ro-records-sub').textContent = upto === d ? 'Whole window' : 'Through day ' + upto;
+    el('ro-xstore').textContent  = fmt(xStoreGB);
+    el('ro-xstore-sub').textContent = copies ? (copies + ' full cop' + (copies>1?'ies':'y') + ' · ' + usd(costDest) + ' per month') : 'No copies configured';
+    el('ro-xfer').textContent    = fmt(xferGB);
+    el('ro-xfer-sub').textContent = copies ? (usd(costXfer) + ' + ' + usd(firstCopy) + ' once') : '—';
+    el('ro-cost').textContent    = usd(costTotal);
+    el('ro-cost-sub').textContent = 'backup ' + usd(costSource) + ' · copies ' + usd(costDest) + ' · transfer ' + usd(costXfer);
+
+    // ---- note ----
+    var growth = cur - start;
+    var lines = [];
+    lines.push('<b>' + fmt(totalNow) + '</b> total usage − <b>' + fmt(cur) + '</b> free allowance = <b>' + fmt(billedNow) + '</b> billed');
+    if (growth >= 0){
+      lines.push('Same thing the short way: ' + fmt(recordsNow) + ' of records − ' + fmt(growth) + ' of growth = ' + fmt(Math.max(0, recordsNow - growth)) + ' billed.');
+    } else {
+      lines.push('The volume shrank by ' + fmt(-growth) + ', so the allowance shrank too — the old data still has to be retained, and you pay for it.');
+    }
+    if (billedNow === 0 && recordsNow > 0 && !snapN){
+      lines.push('Every GB written became a GB of live volume, so the allowance rose in lockstep and nothing is billed.');
+    }
+    if (snapN){
+      var headroom = Math.max(0, cur - (start + recordsNow));
+      lines.push(snapN + ' snapshot' + (snapN>1?'s':'') + ' past the window add ' + fmt(snapTotal) + ' at full volume size' +
+        (headroom > 0 ? ', of which ' + fmt(Math.min(headroom, snapTotal)) + ' fits in leftover allowance.' : ' — the allowance is already spent, so all of it is billed.'));
+    }
+    if (copies){
+      lines.push('The second region has no cluster volume, so all ' + fmt(xStoreGB) + ' is billed there. Transfer moves roughly your churn each month after the first full copy.');
+    }
+    el('note').innerHTML = lines.join('<br>');
+  }
+
+  // ---- events ----
+  [startEl,curEl,rateEl,snapCountEl,snapSizeEl,copiesEl,destRateEl,xferRateEl,copyFreqEl]
+    .forEach(function(i){ i.addEventListener('input', render); });
+  daysEl.addEventListener('input', function(){ buildDays(); render(); });
+  cursorEl.addEventListener('input', render);
+
+  el('fillbtn').addEventListener('click', function(){
+    var v = parseFloat(el('fillval').value); v = isFinite(v) && v >= 0 ? v : 0;
+    for (var i=0;i<churn.length;i++) churn[i] = v;
+    buildDays(); render();
+  });
+
+  var timer = null;
+  el('play').addEventListener('click', function(){
+    if (timer){ clearInterval(timer); timer = null; this.textContent = '▶ Play window'; return; }
+    var btn = this; btn.textContent = '❙❙ Pause';
+    cursorEl.value = 0; render();
+    timer = setInterval(function(){
+      if (+cursorEl.value >= +cursorEl.max){ clearInterval(timer); timer = null; btn.textContent = '▶ Play window'; return; }
+      cursorEl.value = +cursorEl.value + 1; render();
+    }, 260);
+  });
+
+  var pbox = el('presets');
+  PRESETS.forEach(function(p){
+    var b = document.createElement('button');
+    b.className = 'chip'; b.type = 'button'; b.textContent = p.n;
+    b.addEventListener('click', function(){
+      startEl.value = p.s; daysEl.value = p.d; curEl.value = p.cur;
+      snapCountEl.value = p.snapN || 0;
+      snapSizeEl.value  = p.snapSz || p.cur;
+      copiesEl.value    = p.copies || 0;
+      churn = [];
+      for (var i=0;i<p.d;i++) churn.push(p.per ? (p.per[i]||0) : p.c/p.d);
+      buildDays(); cursorEl.value = p.d; render();
+    });
+    pbox.appendChild(b);
+  });
+
+  // ---- boot: the diagram you sketched ----
+  churn = []; for (var i=0;i<14;i++) churn.push(300/14);
+  buildDays(); cursorEl.value = 14; render();
+})();
+</script>
+</body>
+</html>
